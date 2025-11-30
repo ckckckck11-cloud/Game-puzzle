@@ -1,0 +1,904 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>公賣局數字拼圖遊戲 (湯董腹肌有八塊)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* 使用 Noto Sans CJK TC 作為主要字體 */
+        body {
+            font-family: 'Inter', 'Noto Sans TC', sans-serif;
+            background-color: #f7f9fc;
+        }
+        .puzzle-cell {
+            width: 35px;
+            height: 35px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 6px;
+            font-weight: bold;
+            transition: background-color 0.2s, border-color 0.2s, transform 0.1s;
+            cursor: pointer;
+            user-select: none;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+            margin: 1px;
+            border: 2px solid #e5e7eb; /* 預設邊框 */
+            background-color: #f3f4f6;
+            color: #1f2937;
+        }
+        /* 已選取路徑的樣式 (拖曳時的預覽 - 矩形模式) */
+        .selected-path {
+            /* 使用一個突出的顏色來表示矩形選區 */
+            border-color: #1d4ed8 !important; /* Tailwind blue-700 */
+            background-color: #bfdbfe !important; /* Tailwind blue-200 */
+            box-shadow: 0 0 0 3px rgba(30, 64, 175, 0.12);
+        }
+        
+        /* --- 根據使用者要求定制的顏色邏輯 (用於自動求解器高亮) --- */
+        
+        /* 1+9: 紅色 (最高優先級) */
+        .highlight-19 { 
+            background-color: #f87171 !important; /* Tailwind red-400 */
+            border-color: #ef4444 !important; /* Tailwind red-500 */
+            color: white;
+            animation: pulse-highlight 1.5s infinite alternate;
+        }
+        /* 2+8: 綠色 */
+        .highlight-28 { 
+            background-color: #4ade80 !important; /* Tailwind green-400 */
+            border-color: #22c55e !important; /* Tailwind green-500 */
+            color: #1f2937;
+            animation: pulse-highlight 1.5s infinite alternate;
+        }
+        /* 3+7: 黃色 */
+        .highlight-37 { 
+            background-color: #fcd34d !important; /* Tailwind yellow-300 */
+            border-color: #f59e0b !important; /* Tailwind yellow-500 */
+            color: #1f2937;
+            animation: pulse-highlight 1.5s infinite alternate;
+        }
+        /* 4+6: 藍色 */
+        .highlight-46 { 
+            background-color: #60a5fa !important; /* Tailwind blue-400 */
+            border-color: #3b82f6 !important; /* Tailwind blue-500 */
+            color: white;
+            animation: pulse-highlight 1.5s infinite alternate;
+        }
+        /* 5+5: 粉紅色/玫瑰紅 */
+        .highlight-55 { 
+            background-color: #f472b6 !important; /* Tailwind rose-400 */
+            border-color: #ec4899 !important; /* Tailwind rose-500 */
+            color: white;
+            animation: pulse-highlight 1.5s infinite alternate;
+        }
+        /* 多位數組合 (其他相加等於 10 的組合): 紫色 */
+        .highlight-multi {
+            background-color: #a78bfa !important; /* Tailwind violet-400 */
+            border-color: #8b5cf6 !important; /* Tailwind violet-500 */
+            color: white;
+            animation: pulse-highlight 1.5s infinite alternate;
+        }
+        /* 預設的非高亮樣式 (深灰色) */
+        .default-cell {
+             background-color: #e5e7eb !important; /* Gray 200 */
+             color: #4b5563 !important; /* Gray 600 */
+             border-color: #d1d5db !important; /* Gray 300 */
+        }
+        /* 已消除的單元格 */
+        .cleared-cell {
+            background-color: #e0f2f1 !important; /* Teal 50 - 模擬空白 */
+            border-color: #e0f2f1 !important;
+            color: #ccc;
+            opacity: 0.6;
+            cursor: default;
+        }
+
+        #puzzle-grid { 
+            display: inline-block; /* 以 inline-block 包含多行 flex-row */
+        }
+
+        @keyframes pulse-highlight {
+            from { transform: scale(1); opacity: 1; }
+            to { transform: scale(1.05); opacity: 0.9; }
+        }
+    </style>
+</head>
+<body class="p-8">
+
+    <!-- ========================================================= -->
+    <!-- 這裡放置所有音效的 HTML5 元素 -->
+    <!-- ========================================================= -->
+    <audio id="sound1" data-sound-name="正事不幹專搞這種鳥是" src="https://memeprod.sgp1.digitaloceanspaces.com/user-sound/922ac5e53bf90b55f7276cdfcd886404.mp3"></audio>
+    <audio id="sound2" data-sound-name="我已經很興奮了" src="https://memeprod.sgp1.digitaloceanspaces.com/user-sound/9daeb8f3b2bc1568858dfdac95d977ed.mp3"></audio>
+    <audio id="sound3" data-sound-name="就是這麼簡單" src="https://memeprod.sgp1.digitaloceanspaces.com/user-sound/4b3591e8d14ec853d7f7ad47b671292a.mp3"></audio>
+    <audio id="sound4" data-sound-name="上帝就要降臨啦" src="https://memeprod.sgp1.digitaloceanspaces.com/user-sound/a7bce6b8ac4c61c18514027e4f936ad1.mp3"></audio>
+    <audio id="sound5" data-sound-name="見證了神蹟啦" src="https://memeprod.sgp1.digitaloceanspaces.com/user-sound/2b005a77613ba7e69d64a069fce89349.mp3"></audio>
+    <audio id="sound6" data-sound-name="神威蓋世" src="https://memeprod.sgp1.digitaloceanspaces.com/user-sound/70e3723450c414c489ad7beab498e725.mp3"></audio>
+    <audio id="clear-sound" src="https://memeprod.sgp1.digitaloceanspaces.com/user-sound/922ac5e53bf90b55f7276cdfcd886404.mp3"></audio>
+
+
+<div class="max-w-7xl mx-auto">
+    <h1 class="text-3xl font-extrabold text-gray-800 mb-2">公賣局數字拼圖遊戲 (湯董腹肌有八塊)</h1>
+    <p class="text-gray-500 mb-6 font-semibold">
+        ***手動操作新規則***：請使用滑鼠或觸控拖曳來選取**矩形區域**。矩形內所有**非空數字**的總和必須為 **10** 才能消除！
+    </p>
+
+    <!-- ========================================================= -->
+    <!-- 【修改點 2】排行榜位置移到最上方 -->
+    <!-- ========================================================= -->
+    <div class="bg-white p-6 rounded-xl shadow-lg border border-gray-200 mb-6">
+        <h2 class="text-xl font-semibold mb-3 text-gray-700">🏆 排行榜 </h2>
+        <ul id="leaderboard" class="text-gray-700 text-sm space-y-1"></ul>
+    </div>
+    <!-- ========================================================= -->
+
+
+    <div class="grid lg:grid-cols-3 gap-8">
+        <!-- 拼圖顯示區 -->
+        <div class="lg:col-span-2 bg-white p-6 rounded-xl shadow-lg border border-gray-200">
+            <h2 class="text-xl font-semibold mb-4 text-gray-700">🧩 拼圖網格 (拖曳起點和終點來框選矩形區域)</h2>
+            <div id="puzzle-grid" class="flex flex-col items-start justify-center">
+                <!-- Grid will be rendered here -->
+            </div>
+            <p id="click-feedback" class="mt-4 text-center font-medium text-lg text-blue-600">請拖曳選取起點和終點，定義矩形區域。</p>
+        </div>
+
+        <!-- 控制與結果區 -->
+        <div class="lg:col-span-1 space-y-6">
+            <!-- 數據輸入區 -->
+            <div class="bg-white p-6 rounded-xl shadow-lg border border-gray-200">
+                <h2 class="text-xl font-semibold mb-3 text-gray-700">⚙️ 網格數據輸入與操作</h2>
+                <textarea id="grid-input" rows="10" class="w-full p-2 border border-gray-300 rounded-lg text-sm font-mono focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="輸入新的網格數據，例如：\n[[7,4,9,6,7],[6,1,4,5,8],...] (使用 null 表示空白)"></textarea>
+                <div class="mt-3 space-y-2">
+                    <button onclick="parseAndUpdateGrid()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition duration-150 shadow-md">
+                        更新網格並重新求解
+                    </button>
+                    <!-- 新增的隨機關卡按鈕 -->
+                    <button onclick="generateAndStartRandomGame()" class="w-full bg-pink-600 hover:bg-pink-700 text-white font-bold py-2 px-4 rounded-lg transition duration-150 shadow-md flex items-center justify-center space-x-2">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/24/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2c1.773-1.01 4.54-1.229 6.273.738C12 18 17 21 20 18z"></path></svg>
+                        <span>生成隨機新關卡</span>
+                    </button>
+                    
+                    <!-- 自動執行按鈕 (執行傳統的直線消除) -->
+                    <button id="auto-button" onclick="autoEliminateNextMove()" class="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg transition duration-150 shadow-md flex items-center justify-center space-x-2">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/24/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                        <span>執行最佳直線消除 (下一步)</span>
+                    </button>
+                    <!-- 清除選取按鈕 -->
+                    <button onclick="resetSelection()" class="w-full bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-2 px-4 rounded-lg transition duration-150 shadow-md">
+                        清除選取
+                    </button>
+                    <!-- 新增的重新開始按鈕 -->
+                    <button onclick="restartGame()" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg transition duration-150 shadow-md">
+                        重新開始 (相同關卡)
+                    </button>
+                </div>
+                <p id="feedback-message" class="text-sm mt-2 text-center text-gray-500 hidden"></p>
+            </div>
+
+            <!-- 結果摘要 (只保留分數和顏色說明) -->
+            <div class="bg-white p-6 rounded-xl shadow-lg border border-gray-200">
+                <!-- 【修改點 1】只保留分數顯示 -->
+                <div class="flex justify-between items-center mb-3">
+                    <h2 class="text-xl font-semibold text-gray-700">得分總計</h2>
+                    <div class="text-lg font-bold text-red-600 bg-red-100 p-2 rounded-lg shadow-inner border border-red-200">
+                        已消除格子總數: <span id="elimination-counter" class="ml-1">0</span> 個
+                    </div>
+                </div>
+                <!-- 【修改點 1】移除 solution-summary 區塊 -->
+                
+                <div class="mt-4 pt-4 border-t border-gray-200 text-xs space-y-1">
+                    <p class="font-bold text-gray-700">顏色代碼 (僅用於直線高亮解)</p>
+                    <p><span class="inline-block w-3 h-3 rounded-full bg-red-400"></span> **紅色 (1+9)**</p>
+                    <p><span class="inline-block w-3 h-3 rounded-full bg-green-400"></span> **綠色 (2+8)**</p>
+                    <p><span class="inline-block w-3 h-3 rounded-full bg-yellow-300"></span> **黃色 (3+7)**</p>
+                    <p><span class="inline-block w-3 h-3 rounded-full bg-blue-400"></span> **藍色 (4+6)**</p>
+                    <p><span class="inline-block w-3 h-3 rounded-full bg-rose-400"></span> **粉紅色 (5+5)**</p>
+                    <p><span class="inline-block w-3 h-3 rounded-full bg-violet-400"></span> **紫色 (多位數/其他)**</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // =========================================================
+    // 【新增】音效控制邏輯
+    // =========================================================
+
+    // 定義所有音效的順序和 ID 結構
+    const SOUND_SEQUENCE = [
+        { id: 'sound1', name: '正事不幹專搞這種鳥是' },
+        { id: 'sound2', name: '我已經很興奮了' },
+        { id: 'sound3', name: '就是這麼簡單' },
+        { id: 'sound4', name: '上帝就要降臨啦' },
+        { id: 'sound5', name: '見證了神蹟啦' },
+        { id: 'sound6', name: '神威蓋世' }
+    ];
+
+    let currentSoundIndex = 0; // 追蹤當前播放到哪個音效
+    
+    /**
+     * 播放下一個音效並更新索引 (輪播播放)
+     */
+    function playNextSound() {
+        // 獲取當前音效的 ID 和名稱
+        const currentSoundData = SOUND_SEQUENCE[currentSoundIndex];
+        const currentSoundElement = document.getElementById(currentSoundData.id);
+
+        // 確保每次播放都從音檔開頭播放
+        if (currentSoundElement) {
+            currentSoundElement.currentTime = 0; 
+            
+            // 播放音效
+            currentSoundElement.play()
+                .catch(error => {
+                    // 瀏覽器可能阻止自動播放，但手動點擊後應允許
+                    console.warn(`音效播放失敗 (${currentSoundData.name}):`, error);
+                });
+
+            // 準備下一個索引 (循環)
+            currentSoundIndex = (currentSoundIndex + 1) % SOUND_SEQUENCE.length; 
+        }
+    }
+
+
+    // 定義最大選取數量 (不再嚴格限制，但保留變數)
+    const MAX_SELECTION = 10;
+    const GRID_ROWS = 10;
+    const GRID_COLS = 17;
+
+    // 根據使用者圖片 (image_665c79.jpg) 轉錄的 10x17 謎題數據
+    const initialRawData = [
+        [9, 3, 9, 4, 1, 7, 6, 7, 4, 8, 6, 8, 8, 8, 7, 4, 2],
+        [4, 8, 4, 2, 2, 5, 7, 4, 7, 9, 3, 9, 5, 8, 7, 3, 4],
+        [4, 4, 3, 2, 9, 5, 4, 6, 9, 4, 7, 2, 3, 4, 3, 2, 6],
+        [3, 5, 8, 7, 1, 9, 5, 7, 8, 9, 5, 9, 7, 5, 5, 4, 2],
+        [7, 5, 1, 6, 6, 3, 7, 2, 1, 2, 1, 4, 9, 4, 9, 9, 8],
+        [1, 6, 5, 8, 6, 4, 9, 1, 2, 5, 3, 6, 1, 4, 8, 6, 7],
+        [2, 3, 3, 6, 3, 1, 2, 4, 2, 4, 6, 7, 9, 8, 9, 1, 4],
+        [7, 3, 1, 7, 3, 2, 7, 6, 8, 6, 1, 5, 2, 5, 6, 8, 3],
+        [5, 5, 5, 1, 9, 5, 2, 3, 9, 4, 4, 8, 4, 2, 9, 5, 2],
+        [9, 4, 2, 2, 1, 1, 5, 1, 7, 2, 9, 4, 1, 7, 7, 6, 6]
+    ];
+
+    let currentGrid = [];     // 當前遊戲狀態的網格 (會被消除)
+    let gameSeedGrid = [];    // 當前關卡的初始網格 (用於重新開始)
+    let startCell = null;     // {r, c, element}
+    let isDragging = false;
+    
+    let totalCellsEliminated = 0;
+
+    const inputArea = document.getElementById('grid-input');
+    const gridContainer = document.getElementById('puzzle-grid');
+    // const summaryElement = document.getElementById('solution-summary'); // 【修改點 1】移除
+    // const solutionCountElement = document.getElementById('solution-count'); // 【修改點 1】移除
+    const feedbackMessage = document.getElementById('feedback-message');
+    const autoButton = document.getElementById('auto-button');
+    const clickFeedback = document.getElementById('click-feedback');
+    const eliminationCounterElement = document.getElementById('elimination-counter'); 
+
+    // Auto-solver only checks 2 directions: H (Right) and V (Down)
+    const DIRECTIONS = [
+        [0, 1],  // H: 右
+        [1, 0]   // V: 下
+    ];
+
+    /**
+     * 根據解決方案的類型獲取優先級值 (數字越小，優先級越高)
+     */
+    function getPriorityValue(type) {
+        if (type === 'P_19') return 1; // 1 + 9 (最高優先)
+        if (type === 'P_28') return 2; // 2 + 8 
+        if (type === 'P_37') return 3; // 3 + 7
+        if (type === 'P_46') return 4; // 4 + 6
+        if (type === 'P_55') return 5; // 5 + 5
+        if (type === 'P_Multi') return 6; // 多位數組合 (最低優先)
+        return 99; 
+    }
+
+    /**
+     * *** 舊邏輯，僅用於自動求解器的高亮顯示 ***
+     * 核心邏輯：掃描網格找出所有相加等於 10 的相鄰組合 (可跳過空白)
+     */
+    function findSolutions(grid) {
+        if (!grid || grid.length === 0) return { solutions: [], solutionCoords: new Set(), cellPriorityMap: new Map() };
+
+        const R = grid.length;
+        const C = grid[0].length;
+        const solutions = []; 
+        const cellPriorityMap = new Map(); 
+
+        for (let r = 0; r < R; r++) {
+            for (let c = 0; c < C; c++) {
+                if (grid[r][c] === null) continue; 
+
+                DIRECTIONS.forEach(([dr, dc]) => {
+                    let currentSum = grid[r][c];
+                    let coords = [`${r}_${c}`];
+                    let values = [grid[r][c]];
+                    
+                    let nr = r + dr;
+                    let nc = c + dc;
+
+                    // 檢查直線方向
+                    while (nr >= 0 && nr < R && nc >= 0 && nc < C && coords.length < MAX_SELECTION) {
+                        const value = grid[nr][nc];
+                        
+                        if (value !== null) {
+                            // 找到非空數字，加入總和
+                            currentSum += value;
+                            coords.push(`${nr}_${nc}`); 
+                            values.push(value);
+
+                            if (currentSum === 10 && coords.length >= 2) {
+                                // --- Solution Found ---
+                                let type;
+                                let description;
+                                if (coords.length === 2) {
+                                    const sortedValues = [...values].sort((a, b) => a - b);
+                                    const v1 = sortedValues[0];
+                                    const v2 = sortedValues[1];
+                                    
+                                    if (v1 === 1 && v2 === 9) { type = 'P_19'; description = `(1+9 紅色)`; } 
+                                    else if (v1 === 2 && v2 === 8) { type = 'P_28'; description = `(2+8 綠色)`; } 
+                                    else if (v1 === 3 && v2 === 7) { type = 'P_37'; description = `(3+7 黃色)`; } 
+                                    else if (v1 === 4 && v2 === 6) { type = 'P_46'; description = `(4+6 藍色)`; } 
+                                    else if (v1 === 5 && v2 === 5) { type = 'P_55'; description = `(5+5 粉紅色)`; } 
+                                    else { type = 'P_Multi'; description = `(其他多位數/意外 - 紫色)`; }
+                                } else { 
+                                    type = 'P_Multi';
+                                    description = `(多位數組合 - 紫色)`;
+                                }
+
+                                solutions.push({
+                                    coords: [...coords],
+                                    value: values.join(' + ') + ` = 10`,
+                                    type: type,
+                                    description: description
+                                });
+                                
+                                // 找到一組解後，停止此方向的搜索
+                                break; 
+                            } else if (currentSum > 10) {
+                                // 超過 10，停止此方向的搜索
+                                break; 
+                            }
+                        }
+                        
+                        // 繼續檢查下一個單元格 (即使當前是 null，也會跳過並繼續前進)
+                        nr += dr;
+                        nc += dc;
+                    }
+                });
+            }
+        }
+        
+        // --- Post-processing: Build the Priority Map ---
+        // 確保每個單元格被其最高優先級的解高亮
+        solutions.forEach(sol => {
+            const currentPriority = getPriorityValue(sol.type);
+            sol.coords.forEach(coord => {
+                const existingType = cellPriorityMap.get(coord);
+                const existingPriority = existingType ? getPriorityValue(existingType) : 100;
+
+                if (currentPriority < existingPriority) {
+                    cellPriorityMap.set(coord, sol.type);
+                }
+            });
+        });
+
+        solutions.sort((a, b) => getPriorityValue(a.type) - getPriorityValue(b.type));
+
+        return { solutions, solutionCoords: new Set(cellPriorityMap.keys()), cellPriorityMap };
+    }
+    
+    /**
+     * *** 新邏輯：計算矩形區域內的內容 ***
+     * 尋找從 start 到 end 的矩形路徑上的所有非空數字
+     */
+    function findRectangleContents(startR, startC, endR, endC) {
+        const R = currentGrid.length;
+        const C = currentGrid[0].length;
+        
+        // Determine the boundaries of the rectangle
+        const minR = Math.min(startR, endR);
+        const maxR = Math.max(startR, endR);
+        const minC = Math.min(startC, endC);
+        const maxC = Math.max(startC, endC);
+
+        let coords = [];
+        let values = [];
+        let sum = 0;
+
+        // Iterate through the rectangle
+        for (let r = minR; r <= maxR; r++) {
+            for (let c = minC; c <= maxC; c++) {
+                const value = currentGrid[r][c];
+
+                // Only count non-null (non-eliminated) cells
+                if (value !== null) {
+                    sum += value;
+                    coords.push({r, c});
+                    values.push(value);
+                }
+            }
+        }
+
+        // 必須至少包含 2 個非空數字才能構成消除
+        const isValid = coords.length >= 2; 
+
+        return { 
+            isValid: isValid, 
+            coords: coords, 
+            values: values, 
+            sum: sum 
+        };
+    }
+
+
+    /**
+     * 重設滑鼠選取狀態 (清除預覽)
+     */
+    function resetSelection(message = `請拖曳選取起點和終點，定義矩形區域。`, isError = false) {
+        // 清除所有單元格的 selected-path 樣式
+        document.querySelectorAll('.selected-path').forEach(el => {
+            el.classList.remove('selected-path');
+        });
+        
+        startCell = null;
+        isDragging = false;
+        
+        clickFeedback.textContent = message;
+        clickFeedback.className = `mt-4 text-center font-medium text-lg ${isError ? 'text-red-600' : 'text-blue-600'}`;
+    }
+
+    /**
+     * 處理滑鼠放開 (mouseup / pointerup) 事件：驗證矩形選取並執行消除
+     */
+    function handleMouseUp(event) {
+        if (!isDragging || !startCell) {
+            isDragging = false;
+            return;
+        }
+        
+        const endCellElement = event.target.closest('.puzzle-cell');
+        if (!endCellElement) {
+            // 在網格外放開
+            resetSelection();
+            return;
+        }
+        
+        const endR = parseInt(endCellElement.dataset.r, 10);
+        const endC = parseInt(endCellElement.dataset.c, 10);
+
+        // 矩形選取邏輯
+        const path = findRectangleContents(startCell.r, startCell.c, endR, endC);
+
+        if (!path.isValid) {
+            resetSelection('❌ 無效的矩形選取！選取區域內必須至少包含 2 個非空數字。', true);
+            return;
+        }
+        
+        const sum = path.sum;
+
+        if (sum > 10) {
+            resetSelection(`❌ 矩形內所有數字總和 (${sum}) 超過 10。請重新選取。`, true);
+            return;
+        }
+        
+        if (sum === 10) {
+            // 成功消除
+            executeManualElimination(path.coords, sum);
+            return;
+        }
+
+        // 提示當前矩形的總和
+        resetSelection(`⚠️ 矩形選取成功，但總和為 ${sum}。目標是 10。`, true);
+    }
+    
+    /**
+     * 處理滑鼠移動 (mousemove / pointermove) 事件：預覽矩形選取路徑
+     * 修正：現在會高亮顯示整個拖曳的矩形邊界，包括空單元格。
+     */
+    function handleMouseMove(event) {
+        if (!isDragging || !startCell) return;
+        
+        const currentCellElement = event.target.closest('.puzzle-cell');
+        if (!currentCellElement) return;
+
+        const currentR = parseInt(currentCellElement.dataset.r, 10);
+        const currentC = parseInt(currentCellElement.dataset.c, 10);
+        
+        // 1. 確定矩形的邊界
+        const minR = Math.min(startCell.r, currentR);
+        const maxR = Math.max(startCell.r, currentR);
+        const minC = Math.min(startCell.c, currentC);
+        const maxC = Math.max(startCell.c, currentC);
+
+        // 2. 清除舊的預覽
+        document.querySelectorAll('.selected-path').forEach(el => {
+            el.classList.remove('selected-path');
+        });
+
+        // 3. 尋找新的矩形內容 (Non-null cells) 以計算總和
+        const path = findRectangleContents(startCell.r, startCell.c, currentR, currentC);
+
+        // 4. 渲染整個矩形邊界
+        for (let r = minR; r <= maxR; r++) {
+            for (let c = minC; c <= maxC; c++) {
+                const element = document.querySelector(`.puzzle-cell[data-r="${r}"][data-c="${c}"]`);
+                if (element) {
+                    element.classList.add('selected-path');
+                }
+            }
+        }
+
+        // 5. 渲染提示 (使用非空數字的總和)
+        if (path.coords.length > 0) {
+            const sum = path.sum;
+            
+            if (path.coords.length < 2) {
+                 clickFeedback.textContent = '⛔ 選取區域內至少需要 2 個非空數字。';
+                 clickFeedback.className = `mt-4 text-center font-medium text-lg text-red-600`;
+            } else if (sum > 10) {
+                clickFeedback.textContent = `❌ 矩形內所有數字總和 (${sum}) 超過 10。`;
+                clickFeedback.className = `mt-4 text-center font-medium text-lg text-red-600`;
+            } else {
+                clickFeedback.textContent = `矩形已選取 ${path.coords.length} 個數字，總和為 ${sum}。目標是 10。`;
+                clickFeedback.className = `mt-4 text-center font-medium text-lg ${sum === 10 ? 'text-green-600' : 'text-yellow-600'}`;
+            }
+        } else {
+            clickFeedback.textContent = '⛔ 拖曳區域內沒有可選取的數字。';
+            clickFeedback.className = `mt-4 text-center font-medium text-lg text-red-600`;
+        }
+    }
+
+    /**
+     * 處理滑鼠按下 (mousedown / pointerdown) 事件：設置起點
+     */
+    function handleMouseDown(event) {
+        const cellElement = event.target.closest('.puzzle-cell');
+        if (!cellElement) return;
+
+        const r = parseInt(cellElement.dataset.r, 10);
+        const c = parseInt(cellElement.dataset.c, 10);
+        
+        if (currentGrid[r][c] === null) {
+            resetSelection('⛔ 已消除的單元格不能作為矩形框選的起點。', true);
+            return;
+        }
+
+        // 清除上一次的預覽和錯誤
+        resetSelection(); 
+
+        isDragging = true;
+        startCell = { r, c, element: cellElement };
+        
+        // 為了讓單個 cell 也能有 pre-select 樣式
+        cellElement.classList.add('selected-path'); 
+    }
+    
+    /**
+     * 執行手動消除步驟
+     */
+    function executeManualElimination(coords, sum) {
+        // 執行消除：將網格中的這些座標設為 null
+        coords.forEach(coord => {
+            currentGrid[coord.r][coord.c] = null;
+        });
+        
+        // 【音效整合點 1: 手動消除】
+        playNextSound();
+
+        resetSelection(`🎉 成功消除！矩形總和 (${sum})。請拖曳選取下一組。`, false);
+        
+        // 重新求解並渲染
+        reSolveAndRender();
+
+        totalCellsEliminated += coords.length;
+        updateTotalCellsEliminatedDisplay();
+        
+        // 提示資訊
+        feedbackMessage.classList.remove('hidden');
+        feedbackMessage.textContent = `✅ 手動矩形消除成功：總共清除了 ${coords.length} 個格子。`;
+    }
+
+    /**
+     * 更新消除總格子數量的顯示
+     */
+    function updateTotalCellsEliminatedDisplay() {
+        if (eliminationCounterElement) {
+            eliminationCounterElement.textContent = totalCellsEliminated;
+        }
+    }
+
+
+    /**
+     * 渲染網格並高亮解
+     */
+    function renderGrid(grid, solutionCoords = new Set(), cellPriorityMap = new Map()) {
+        gridContainer.innerHTML = ''; 
+
+        if (!grid || grid.length === 0) {
+            gridContainer.innerHTML = '<p class="text-red-500">網格數據無效或為空。</p>';
+            autoButton.disabled = true;
+            return;
+        }
+
+        autoButton.disabled = false;
+        grid.forEach((row, r) => {
+            const rowDiv = document.createElement('div');
+            rowDiv.className = 'flex';
+            row.forEach((cellValue, c) => {
+                const coord = `${r}_${c}`;
+                const cellDiv = document.createElement('div');
+                
+                cellDiv.dataset.r = r;
+                cellDiv.dataset.c = c;
+                
+                if (cellValue === null) {
+                    cellDiv.textContent = '';
+                    cellDiv.className = `puzzle-cell cleared-cell`;
+                } else {
+                    cellDiv.textContent = cellValue;
+                    
+                    // 這裡使用直線求解器的結果來決定顏色
+                    const highestPriorityType = cellPriorityMap.get(coord);
+                    let colorClass = 'default-cell'; 
+                    
+                    if (highestPriorityType === 'P_19') colorClass = 'highlight-19';
+                    else if (highestPriorityType === 'P_28') colorClass = 'highlight-28';
+                    else if (highestPriorityType === 'P_37') colorClass = 'highlight-37';
+                    else if (highestPriorityType === 'P_46') colorClass = 'highlight-46';
+                    else if (highestPriorityType === 'P_55') colorClass = 'highlight-55';
+                    else if (highestPriorityType === 'P_Multi') colorClass = 'highlight-multi';
+
+
+                    cellDiv.className = `puzzle-cell ${colorClass}`;
+                }
+                
+                rowDiv.appendChild(cellDiv);
+            });
+            gridContainer.appendChild(rowDiv);
+        });
+        
+        attachDragListeners();
+    }
+
+    /**
+     * 附加拖曳事件監聽器 (改用 pointer 事件，支援觸控)
+     */
+    function attachDragListeners() {
+        // 移除可能存在的 pointer 事件，確保不重複綁定
+        gridContainer.removeEventListener('pointerdown', pointerDownHandler);
+        gridContainer.removeEventListener('pointermove', pointerMoveHandler);
+        document.removeEventListener('pointerup', pointerUpHandler);
+        
+        gridContainer.addEventListener('pointerdown', pointerDownHandler, { passive: false });
+        gridContainer.addEventListener('pointermove', pointerMoveHandler, { passive: false });
+        document.addEventListener('pointerup', pointerUpHandler);
+    }
+
+    // wrapper handlers to allow preventDefault + unified pointer events
+    function pointerDownHandler(e) { e.preventDefault(); handleMouseDown(e); }
+    function pointerMoveHandler(e) { e.preventDefault(); handleMouseMove(e); }
+    function pointerUpHandler(e) { handleMouseUp(e); }
+
+
+    /**
+     * 渲染結果摘要 (已移除，僅保留此空函數以維持調用結構)
+     */
+    function renderSummary(solutions) {
+        // 【修改點 1】此函數現在僅檢查自動求解器的可行性
+        // solutionCountElement.textContent = solutions.length; // 移除
+        // summaryElement.innerHTML = ''; // 移除
+        
+        if (solutions.length === 0) {
+            // summaryElement.innerHTML = '<p class="text-green-600 font-medium">太棒了！目前網格中已無可消除的直線組合。</p>'; // 移除
+            autoButton.disabled = true;
+            return;
+        }
+        
+        autoButton.disabled = false;
+        // 移除所有關於列表渲染的代碼
+    }
+    
+    /**
+     * 重新求解並渲染網格和摘要
+     */
+    function reSolveAndRender() {
+        // 這裡的 findSolutions 仍舊使用舊的直線邏輯來計算顏色和列表
+        const { solutions, solutionCoords, cellPriorityMap } = findSolutions(currentGrid);
+        renderGrid(currentGrid, solutionCoords, cellPriorityMap);
+        
+        // 將當前的 "種子網格" 狀態寫入輸入框，這樣使用者可以複製這個關卡
+        inputArea.value = JSON.stringify(gameSeedGrid, null, 2);
+
+        renderSummary(solutions);
+    }
+
+    /**
+     * 設置新的網格數據並重新開始遊戲流程
+     */
+    function setNewGridData(newGridData, message) {
+        // 1. 將新的網格數據設為當前的 '種子' 網格 (深層複製)
+        gameSeedGrid = newGridData.map(row => [...row]); 
+        currentGrid = newGridData.map(row => [...row]); // 2. 設定工作網格
+
+        // 3. 重設分數
+        totalCellsEliminated = 0;
+        updateTotalCellsEliminatedDisplay();
+        
+        // 4. 清除選取和錯誤訊息
+        resetSelection(message, false);
+        feedbackMessage.classList.add('hidden');
+
+        // 5. 重新渲染和求解
+        reSolveAndRender();
+
+        // 6. 滾動到網格
+        gridContainer.scrollIntoView({ behavior: 'smooth' });
+    }
+
+    /**
+     * 處理網格更新的函數 (從輸入框解析數據)
+     */
+    function parseAndUpdateGrid() {
+        let newGrid;
+        try {
+            newGrid = JSON.parse(inputArea.value.trim());
+            if (!Array.isArray(newGrid) || newGrid.length === 0 || !Array.isArray(newGrid[0])) {
+                throw new Error("數據格式錯誤，應為二維陣列。");
+            }
+        } catch (e) {
+            feedbackMessage.textContent = `數據解析錯誤！請確保您輸入的是有效的 JSON 格式的二維陣列 (e.g., [[1,2], [3,4]]). 錯誤: ${e.message}`;
+            feedbackMessage.classList.remove('hidden');
+            feedbackMessage.classList.remove('text-gray-500');
+            feedbackMessage.classList.add('text-red-500');
+            return;
+        }
+        
+        // 成功解析後，將新的網格設為當前的遊戲種子
+        setNewGridData(newGrid, '網格已更新，請開始新的矩形框選。');
+    }
+    
+    /**
+     * 生成一個指定大小的隨機網格 (數字範圍 1-9)
+     */
+    function generateRandomGrid(rows, cols) {
+        const newGrid = [];
+        for (let r = 0; r < rows; r++) {
+            const row = [];
+            for (let c = 0; c < cols; c++) {
+                // 產生 1 到 9 的隨機整數
+                row.push(Math.floor(Math.random() * 9) + 1); 
+            }
+            newGrid.push(row);
+        }
+        return newGrid;
+    }
+
+    /**
+     * 產生並開始一個新的隨機遊戲
+     */
+    function generateAndStartRandomGame() {
+        const newRandomGrid = generateRandomGrid(GRID_ROWS, GRID_COLS);
+        setNewGridData(newRandomGrid, '🎉 已生成新的隨機關卡！請開始矩形框選。');
+    }
+
+    /**
+     * 重新開始遊戲 (從當前關卡的種子數據重新加載)
+     */
+    function restartGame() {
+        // 使用 gameSeedGrid 進行重啟
+        setNewGridData(gameSeedGrid, '遊戲已重設，從當前關卡重新開始！');
+    }
+
+
+    /**
+     * 自動執行最佳下一步消除 (仍使用傳統直線規則)
+     */
+    function autoEliminateNextMove() {
+        const { solutions } = findSolutions(currentGrid);
+        
+        feedbackMessage.classList.remove('hidden');
+        resetSelection('已使用自動模式。');
+        
+        if (solutions.length === 0) {
+            feedbackMessage.textContent = '⛔ 網格中已無可消除的直線組合！';
+            autoButton.disabled = true;
+            return;
+        }
+        
+        const bestMove = solutions[0];
+        
+        // 執行消除：將網格中的這些座標設為 null
+        bestMove.coords.forEach(coordStr => {
+            const [r, c] = coordStr.split('_').map(n => parseInt(n, 10));
+            currentGrid[r][c] = null; 
+        });
+        
+        // 【音效整合點 2: 自動消除】
+        playNextSound();
+
+        reSolveAndRender();
+
+        totalCellsEliminated += bestMove.coords.length;
+        updateTotalCellsEliminatedDisplay();
+
+        feedbackMessage.textContent = `✅ 成功執行了最佳直線消除 ( ${bestMove.description} )：清除了 ${bestMove.coords.length} 個格子。`;
+
+        gridContainer.scrollIntoView({ behavior: 'smooth' });
+    }
+    
+    // 頁面加載時初始化
+    window.onload = () => {
+        // 將初始關卡填入輸入框，並使用固定的 initialRawData 作為種子
+        inputArea.value = JSON.stringify(initialRawData, null, 2);
+        setNewGridData(initialRawData, '遊戲已開始。請拖曳選取起點和終點，定義矩形區域。');
+    };
+</script>
+
+<script>
+// =========================================================
+// 【修改點 2】靜態排行榜數據與渲染
+// =========================================================
+
+// 您可以在這裡手動修改排行榜的名稱和分數
+const MANUAL_LEADERBOARD_DATA = [
+    { name: '羅課長', score: 120 },
+    { name: '湯圓', score: 115 },
+    { name: '陳學儀', score: 95 }
+    // 您可以增加更多項目，但只會顯示前三名
+];
+
+/**
+ * 渲染手動輸入的排行榜數據
+ */
+function loadLeaderboard() {
+    let lb = document.getElementById('leaderboard'); 
+    lb.innerHTML = '';
+
+    if (MANUAL_LEADERBOARD_DATA.length === 0) {
+        lb.innerHTML = '<li>目前沒有排行榜數據。</li>';
+        return;
+    }
+    
+    // 排序 (確保即使您輸入順序亂了，也會按分數排序)
+    const sortedData = [...MANUAL_LEADERBOARD_DATA].sort((a, b) => b.score - a.score);
+
+    // 只顯示前三名
+    sortedData.slice(0, 3).forEach((r, i) => { 
+        lb.innerHTML += `<li class="p-1 bg-gray-50 rounded-md flex justify-between items-center">
+            <span class="font-bold text-lg text-blue-600 mr-2">${i + 1}.</span> 
+            <span class="flex-grow">${r.name}</span>
+            <span class="font-mono text-red-500">${r.score} 分</span>
+        </li>`;
+    });
+}
+
+// 頁面加載時，在遊戲初始化之後渲染排行榜
+window.addEventListener('load', () => {
+    // 註釋掉原本使用 localStorage 的代碼
+    /* let playerName = localStorage.getItem('np-name')||'';
+    if(!playerName) askName();
+    */
+    loadLeaderboard();
+});
+
+// 移除原本的 updateLeaderboard 和 askName 函數，因為現在是手動輸入
+/*
+function updateLeaderboard(score){
+    // ...
+}
+function askName(){
+    // ...
+}
+*/
+</script>
+</body>
+</html>
